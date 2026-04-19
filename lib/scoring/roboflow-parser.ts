@@ -9,7 +9,7 @@ export interface RawPrediction {
   height: number;
 }
 
-export const MIN_CONFIDENCE = 0.5;
+export const MIN_CONFIDENCE = 0.45;
 
 export function roboflowLabelToTile(label: string): Tile {
   const suited = label.match(/^([1-9])([mps])$/);

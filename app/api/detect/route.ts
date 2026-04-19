@@ -15,14 +15,12 @@ export async function POST(request: Request) {
   }
 
   const apiKey = process.env.ROBOFLOW_API_KEY;
-  const modelId = process.env.ROBOFLOW_MODEL_ID;
-  const modelVersion = process.env.ROBOFLOW_MODEL_VERSION;
 
-  if (!apiKey || !modelId || !modelVersion) {
+  if (!apiKey) {
     return NextResponse.json({ error: "Roboflow environment variables not configured" }, { status: 500 });
   }
 
-  const url = `https://detect.roboflow.com/${modelId}/${modelVersion}?api_key=${apiKey}`;
+  const url = `https://detect.roboflow.com/riichicam/1?api_key=${apiKey}`;
 
   let roboflowData: { predictions?: RawPrediction[] };
   try {
