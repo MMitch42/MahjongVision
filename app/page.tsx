@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { score } from '@/lib/scoring';
-import type { Hand, ScoreResult, Tile, WindValue } from '@/lib/scoring/types';
+import type { Hand, Meld, ScoreResult, Tile, WindValue } from '@/lib/scoring/types';
 import CameraCapture from './components/CameraCapture';
 import TileRow from './components/TileRow';
+import MeldBuilder from './components/MeldBuilder';
 
 // ─── Reusable UI primitives ───────────────────────────────────────────────────
 
@@ -152,9 +153,11 @@ const HAND_NAME_LABELS: Record<string, string> = {
 function ResultPanel({
   result,
   winType,
+  seatWind,
 }: {
   result: ScoreResult;
   winType: 'tsumo' | 'ron';
+  seatWind: WindValue;
 }) {
   const [fuOpen, setFuOpen] = useState(false);
 
@@ -170,6 +173,7 @@ function ResultPanel({
   const sortedYaku = [...result.yaku].sort((a, b) => b.han - a.han);
   const totalDora = result.doraCount + result.uraDoraCount;
   const grandTotal = result.totalHan + totalDora;
+  const isDealer = seatWind === 'east';
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: '#1a1d27', border: '1px solid #2a2d3a' }}>
@@ -192,15 +196,19 @@ function ResultPanel({
           )}
         </div>
         {winType === 'tsumo' && result.points.tsumo && (
-          <p className="text-sm mt-3" style={{ color: '#f5f0e8' }}>
-            Dealer pays{' '}
-            <span className="font-medium">{result.points.tsumo.dealerPays.toLocaleString()}</span>{' '}
-            · Non-dealer pays{' '}
-            <span className="font-medium">
-              {result.points.tsumo.nonDealerPays.toLocaleString()}
-            </span>{' '}
-            each
-          </p>
+          isDealer ? (
+            <p className="text-sm mt-3" style={{ color: '#f5f0e8' }}>
+              Each player pays{' '}
+              <span className="font-medium">{result.points.tsumo.nonDealerPays.toLocaleString()}</span>
+            </p>
+          ) : (
+            <p className="text-sm mt-3" style={{ color: '#f5f0e8' }}>
+              Dealer pays{' '}
+              <span className="font-medium">{result.points.tsumo.dealerPays.toLocaleString()}</span>
+              {' · '}Each non-dealer pays{' '}
+              <span className="font-medium">{result.points.tsumo.nonDealerPays.toLocaleString()}</span>
+            </p>
+          )
         )}
         {winType === 'ron' && result.points.ron !== undefined && (
           <p className="text-sm mt-3" style={{ color: '#f5f0e8' }}>
@@ -287,6 +295,7 @@ export default function Home() {
   const [handTiles, setHandTiles] = useState<Tile[]>([]);
   const [winningTile, setWinningTile] = useState<Tile | null>(null);
   const [doraIndicatorTiles, setDoraIndicatorTiles] = useState<Tile[]>([]);
+  const [melds, setMelds] = useState<Meld[]>([]);
   const [isDetectingHand, setIsDetectingHand] = useState(false);
   const [isDetectingDora, setIsDetectingDora] = useState(false);
   const [detectError, setDetectError] = useState<string | null>(null);
@@ -400,11 +409,12 @@ export default function Home() {
 
   // ── Build hand for scoring ────────────────────────────────────────────────
   function buildHand(): Hand | null {
-    if (handTiles.length !== 13 || !winningTile) return null;
+    const meldTileCount = melds.reduce((s, m) => s + m.tiles.length, 0);
+    if (handTiles.length + meldTileCount !== 13 || !winningTile) return null;
     return {
       closedTiles: handTiles,
       winningTile,
-      melds: [],
+      melds,
       doraIndicators: doraIndicatorTiles,
       winType,
       seatWind,
@@ -428,9 +438,15 @@ export default function Home() {
     setResult(score(hand));
   }
 
-  const canScore = handTiles.length === 13 && winningTile !== null;
+  const meldTileCount = melds.reduce((s, m) => s + m.tiles.length, 0);
+  const canScore = handTiles.length + meldTileCount === 13 && winningTile !== null;
+  const usedTiles: Tile[] = [
+    ...handTiles,
+    ...(winningTile ? [winningTile] : []),
+    ...melds.flatMap((m) => [...m.tiles]),
+  ];
   const isRiichi = riichi || doubleRiichi;
-  const showHandRows = handScanned || handTiles.length > 0 || winningTile !== null;
+  const showHandRows = handScanned || handTiles.length > 0 || winningTile !== null || melds.length > 0;
   const showDoraRow = doraScanned || doraIndicatorTiles.length > 0;
 
   // suppress unused-var warnings for kept UI state
@@ -446,15 +462,12 @@ export default function Home() {
           style={{ background: '#1a1d27', border: '1px solid #2a2d3a', borderTop: '4px solid #d4a843' }}
         >
           <div className="px-4 py-4 flex items-center gap-3">
-            {/* Mahjong tile SVG icon */}
             <div
               className="flex-shrink-0 flex items-center justify-center rounded-lg"
               style={{ width: 48, height: 48, background: '#222536', border: '1px solid #2a2d3a' }}
             >
               <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* Tile outline */}
                 <rect x="4" y="3" width="24" height="26" rx="3" fill="#2a2d3a" stroke="#d4a843" strokeWidth="1.5"/>
-                {/* 中 character — simplified dragon tile */}
                 <text x="16" y="22" textAnchor="middle" fontSize="15" fontWeight="700" fill="#d4a843" fontFamily="serif">中</text>
               </svg>
             </div>
@@ -481,17 +494,31 @@ export default function Home() {
                 label="Hand tiles"
                 tiles={handTiles}
                 onChange={setHandTiles}
-                maxTiles={13}
+                maxTiles={13 - meldTileCount}
+                usedTiles={usedTiles}
               />
+
+              {/* ── Meld builder ── */}
+              {(handScanned || handTiles.length > 0) && (
+                <MeldBuilder
+                  handTiles={handTiles}
+                  melds={melds}
+                  onHandTilesChange={setHandTiles}
+                  onMeldsChange={setMelds}
+                />
+              )}
+
               <div
                 className="-mx-4 px-4 pb-4 pt-4 rounded-b-xl"
-                style={{ background: '#222536', borderTop: '1px solid #2a2d3a', borderLeft: '4px solid #d4a843' }}
+                style={{ background: '#222536', borderTop: '1px solid #2a2d3a' }}
               >
                 <TileRow
                   label="Winning tile"
                   tiles={winningTile ? [winningTile] : []}
                   onChange={(tiles) => setWinningTile(tiles[0] ?? null)}
                   maxTiles={1}
+                  isWinning
+                  usedTiles={usedTiles}
                 />
               </div>
             </div>
@@ -529,6 +556,7 @@ export default function Home() {
               tiles={doraIndicatorTiles}
               onChange={setDoraIndicatorTiles}
               maxTiles={4}
+              usedTiles={usedTiles}
             />
           ) : (
             <div className="space-y-2">
@@ -727,7 +755,7 @@ export default function Home() {
         </button>
 
         {/* ── Result ──────────────────────────────────────────────────────── */}
-        {result && <ResultPanel result={result} winType={winType} />}
+        {result && <ResultPanel result={result} winType={winType} seatWind={seatWind} />}
       </div>
     </main>
   );

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { Tile, SuitedValue } from '@/lib/scoring/types';
+import TileGraphic from './TileGraphic';
 
 interface TileRowProps {
   tiles: Tile[];
@@ -10,24 +11,22 @@ interface TileRowProps {
   label: string;
 }
 
-// Short name for chip display — dragons show English color only
 function tileName(tile: Tile): string {
   if (tile.suit === 'honor') {
-    if (tile.value === 'haku') return 'White';
-    if (tile.value === 'hatsu') return 'Green';
-    if (tile.value === 'chun') return 'Red';
+    if (tile.value === 'haku') return 'Haku (White Dragon)';
+    if (tile.value === 'hatsu') return 'Hatsu (Green Dragon)';
+    if (tile.value === 'chun') return 'Chun (Red Dragon)';
     return tile.value.charAt(0).toUpperCase() + tile.value.slice(1);
   }
   const suffix = tile.suit === 'man' ? 'm' : tile.suit === 'pin' ? 'p' : 's';
   return `${tile.value}${suffix}`;
 }
 
-// Fuller name for palette buttons — dragons show Japanese + English color
 function tilePaletteName(tile: Tile): string {
   if (tile.suit === 'honor') {
-    if (tile.value === 'haku') return 'Haku · White';
-    if (tile.value === 'hatsu') return 'Hatsu · Green';
-    if (tile.value === 'chun') return 'Chun · Red';
+    if (tile.value === 'haku') return 'Haku · White Dragon';
+    if (tile.value === 'hatsu') return 'Hatsu · Green Dragon';
+    if (tile.value === 'chun') return 'Chun · Red Dragon';
     return tile.value.charAt(0).toUpperCase() + tile.value.slice(1);
   }
   return tileName(tile);
@@ -110,12 +109,13 @@ export default function TileRow({ tiles, onChange, maxTiles, label }: TileRowPro
             <button
               key={i}
               onClick={() => removeTile(i)}
+              aria-label={`Remove ${tileName(tile)}`}
               className="px-2.5 py-1 rounded-md text-sm font-medium flex items-center gap-1 transition-colors"
               style={{ background: '#222536', border: '1px solid #2a2d3a', color: '#f5f0e8' }}
               onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#d4a843')}
               onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#2a2d3a')}
             >
-              {tileName(tile)}{' '}
+              <TileGraphic tile={tile} size="normal" />
               <span style={{ color: '#8b8fa8' }}>×</span>
             </button>
           ))}
@@ -143,12 +143,14 @@ export default function TileRow({ tiles, onChange, maxTiles, label }: TileRowPro
                   <button
                     key={i}
                     onClick={() => addTile(tile)}
+                    aria-label={tilePaletteName(tile)}
+                    title={tilePaletteName(tile)}
                     className="px-2 py-1 rounded text-sm font-medium transition-colors"
                     style={{ background: '#222536', border: '1px solid #2a2d3a', color: '#f5f0e8' }}
                     onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#d4a843')}
                     onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#2a2d3a')}
                   >
-                    {tilePaletteName(tile)}
+                    <TileGraphic tile={tile} size="small" />
                   </button>
                 ))}
               </div>
