@@ -86,12 +86,28 @@ export default function TileRow({ tiles, onChange, maxTiles, label, usedTiles = 
   const atMax = maxTiles !== undefined && tiles.length >= maxTiles;
   const countOk = maxTiles === undefined || tiles.length === maxTiles;
 
+  function isAkaTile(tile: Tile): boolean {
+    return tile.suit !== 'honor' && !!tile.isAka;
+  }
+
   function tileUsedCount(tile: Tile): number {
+    if (isAkaTile(tile)) {
+      // Aka tiles: count only aka tiles of the same suit+value
+      return usedTiles.filter((t) => t.suit === tile.suit && t.value === tile.value && t.suit !== 'honor' && !!t.isAka).length;
+    }
+    // Regular tiles: count all tiles of same suit+value (including aka) for the shared 4-cap
     return usedTiles.filter((t) => t.suit === tile.suit && t.value === tile.value).length;
   }
 
+  function tileMaxCount(tile: Tile): number {
+    if (isAkaTile(tile)) {
+      return tile.suit === 'pin' ? 2 : 1; // pin red 5: up to 2; man/sou red 5: only 1
+    }
+    return 4;
+  }
+
   function addTile(tile: Tile) {
-    if (atMax || tileUsedCount(tile) >= 4) return;
+    if (atMax || tileUsedCount(tile) >= tileMaxCount(tile)) return;
     const next = [...tiles, tile];
     onChange(next);
     if (maxTiles !== undefined && next.length >= maxTiles) {
@@ -160,7 +176,7 @@ export default function TileRow({ tiles, onChange, maxTiles, label, usedTiles = 
               <p className="text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: C.textSec }}>{rowLabel}</p>
               <div className="flex flex-wrap gap-1">
                 {rowTiles.map((tile, i) => {
-                  const capped = tileUsedCount(tile) >= 4;
+                  const capped = tileUsedCount(tile) >= tileMaxCount(tile);
                   return (
                     <button
                       key={i}

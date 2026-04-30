@@ -567,7 +567,8 @@ export default function Home() {
   // ── Build hand for scoring ────────────────────────────────────────────────
   function buildHand(): Hand | null {
     const meldTileCount = melds.reduce((s, m) => s + m.tiles.length, 0);
-    if (handTiles.length + meldTileCount !== 13 || !winningTile) return null;
+    const numKans = melds.filter((m) => m.type.startsWith('kan')).length;
+    if (handTiles.length + meldTileCount !== 13 + numKans || !winningTile) return null;
     return {
       closedTiles: handTiles,
       winningTile,
@@ -596,10 +597,12 @@ export default function Home() {
   }
 
   const meldTileCount = melds.reduce((s, m) => s + m.tiles.length, 0);
+  const numKans = melds.filter((m) => m.type.startsWith('kan')).length;
 
   const tenpaiWaits = useMemo<Tile[]>(() => {
     const meldCount = melds.reduce((s, m) => s + m.tiles.length, 0);
-    if (handTiles.length + meldCount !== 13) return [];
+    const kansCount = melds.filter((m) => m.type.startsWith('kan')).length;
+    if (handTiles.length + meldCount !== 13 + kansCount) return [];
     return ALL_TILES.filter(candidate => {
       try {
         const result = score({
@@ -625,7 +628,7 @@ export default function Home() {
     });
   }, [handTiles, melds, winType, seatWind, roundWind, doraIndicatorTiles, riichi, doubleRiichi, ippatsu, haitei, houtei, rinshan, chankan]);
 
-  const canScore = handTiles.length + meldTileCount === 13 && winningTile !== null;
+  const canScore = handTiles.length + meldTileCount === 13 + numKans && winningTile !== null;
   const usedTiles: Tile[] = [
     ...handTiles,
     ...(winningTile ? [winningTile] : []),
@@ -687,9 +690,9 @@ export default function Home() {
                 label="Hand tiles"
                 tiles={handTiles}
                 onChange={(tiles) => setHandTiles(sortTiles(tiles))}
-                maxTiles={13 - meldTileCount}
+                maxTiles={13 + numKans - meldTileCount}
                 usedTiles={usedTiles}
-                forceOpen={handScanned && handTiles.length + meldTileCount < 13}
+                forceOpen={handScanned && handTiles.length + meldTileCount < 13 + numKans}
               />
 
               {(handScanned || handTiles.length > 0) && (
@@ -701,7 +704,7 @@ export default function Home() {
                 />
               )}
 
-              {handTiles.length + meldTileCount === 13 && (
+              {handTiles.length + meldTileCount === 13 + numKans && (
                 <div
                   className="-mx-4 px-4 pb-4 pt-4"
                   style={{ background: C.surfaceEl, borderTop: `1px solid ${C.goldBorderXs}` }}
