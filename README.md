@@ -1,36 +1,89 @@
 # RiichiCam
 
-Riichi mahjong scoring web app with camera tile detection.
+Riichi mahjong hand scorer with camera tile detection. Scan your hand, confirm conditions, get a full score breakdown — fu, han, yaku list, and payment table.
 
-## Run
+Built with Next.js 14 App Router, TypeScript, and Tailwind CSS. Deployed on Vercel.
 
-```bash
-npm install
-npm run dev      # http://localhost:3000
-npm run build    # production build
-npm test         # run scoring engine tests (vitest)
-```
+## Features
 
-## Status
+- **Camera detection** — photograph your tiles and have them auto-detected via Roboflow computer vision
+- **Manual input** — tap tiles from the full palette if preferred, including red 5 (aka dora) variants
+- **Meld support** — declare chi, pon, and kan with called-from direction
+- **Full scoring engine** — all standard yaku, all yakuman, fu breakdown, payment table
+- **Auto-sort** — scanned tiles sorted automatically (man → pin → sou → winds → dragons)
+- **WRC / Mahjong Soul rules** — kuitan on, double yakuman off, 3 aka dora
 
-**Step 1 complete**: Pure TypeScript scoring engine with full test suite.
+## Scoring engine
 
-- `lib/scoring/types.ts` — all public types and `DEFAULT_RULES`
-- `lib/scoring/tiles.ts` — tile utilities, dora resolution
-- `lib/scoring/hand-parser.ts` — winning hand grouping (standard, chiitoitsu, kokushi)
-- `lib/scoring/yaku.ts` — all standard yaku + all yakuman detection
-- `lib/scoring/fu.ts` — fu calculation with pinfu/chiitoitsu special cases
-- `lib/scoring/points.ts` — payment calculation, named hand thresholds
-- `lib/scoring/index.ts` — `score(hand, rules?)` entry point
-
-38 tests passing, clean build.
-
-## API
+Pure TypeScript, no dependencies. Entry point:
 
 ```typescript
 import { score } from "@/lib/scoring";
 import type { Hand, ScoreResult } from "@/lib/scoring/types";
 
 const result: ScoreResult = score(hand);
+// with custom rules:
 const result: ScoreResult = score(hand, { kuitan: false, kiriagemangan: true });
 ```
+
+**Supported yaku** — riichi, ippatsu, tsumo, tanyao, pinfu, iipeiko, yakuhai, chanta, sanshoku, ittsu, toitoi, sanankou, honitsu, chinitsu, chiitoitsu, and all yakuman (kokushi, suuankou, daisangen, shousuushii, daisuushii, tsuuiisou, ryuuiisou, chinroutou, chuuren, suukantsu, tenhou, chiihou).
+
+**Rules config**
+
+| Flag | Default | Note |
+|---|---|---|
+| `kuitan` | `true` | Open tanyao allowed |
+| `kiriagemangan` | `false` | No rounding up to mangan |
+| `doubleYakuman` | `false` | Treat as single yakuman |
+| `doubleWindPairFu` | `4` | Mahjong Soul default |
+| `akaDoraCount` | `3` | One per suit |
+
+## Setup
+
+```bash
+npm install
+npm run dev      # http://localhost:3000
+npm run build    # production build
+npm test         # scoring engine tests (vitest)
+```
+
+Copy `.env.example` to `.env.local` and add your Roboflow API key:
+
+```
+ROBOFLOW_API_KEY=your_key_here
+```
+
+The detection model is hosted at `detect.roboflow.com/riichicam/1`.
+
+## Project structure
+
+```
+app/
+  page.tsx                  # main UI — tile input, conditions, score display
+  layout.tsx                # root layout with Vercel Analytics
+  globals.css               # design tokens (dark slate + gold)
+  api/detect/route.ts       # Roboflow inference API route
+  components/
+    CameraCapture.tsx        # scan button + camera/library/paste menu
+    TileRow.tsx              # tile display row + full tile palette
+    TileGraphic.tsx          # individual tile illustrations (SVG)
+    MeldBuilder.tsx          # chi/pon/kan meld input UI
+lib/scoring/
+  index.ts                  # score(hand, rules?) → ScoreResult
+  types.ts                  # all public types
+  tiles.ts                  # tile utilities, dora resolution, sortTiles
+  hand-parser.ts            # hand grouping (standard, chiitoitsu, kokushi)
+  yaku.ts                   # detectYaku() + detectYakuman()
+  fu.ts                     # calculateFu()
+  points.ts                 # calculatePoints(), payment table
+  roboflow-parser.ts        # Roboflow label → Tile mapping
+  __tests__/
+    scoring.test.ts         # 38 tests
+```
+
+## Open source credits
+
+**Tile graphics** — [FluffyStuff/riichi-mahjong-tiles](https://github.com/FluffyStuff/riichi-mahjong-tiles)
+SVG tile images used in the tile picker and score display. Released into the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+
+**Detection dataset** — Mahjong tile dataset sourced via [Roboflow Universe](https://universe.roboflow.com), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The trained model (`riichicam/1`) was fine-tuned on additional photos of the author's own tile set.

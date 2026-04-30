@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { score } from '@/lib/scoring';
-import type { Hand, Meld, ScoreResult, Tile, WindValue } from '@/lib/scoring/types';
+import { sortTiles } from '@/lib/scoring/tiles';
+import type { Hand, Meld, ScoreResult, Tile, SuitedValue, WindValue } from '@/lib/scoring/types';
 import CameraCapture from './components/CameraCapture';
 import TileRow from './components/TileRow';
+import TileGraphic from './components/TileGraphic';
 import MeldBuilder from './components/MeldBuilder';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -162,7 +164,87 @@ function Disclosure({ label, children }: { label: string; children: ReactNode })
   );
 }
 
+// ─── Winning tile palette ─────────────────────────────────────────────────────
+
+const ALL_TILES: Tile[] = [
+  ...[1,2,3,4,5,6,7,8,9].map(v => ({ suit: 'man' as const, value: v as SuitedValue })),
+  { suit: 'man' as const, value: 5 as SuitedValue, isAka: true },
+  ...[1,2,3,4,5,6,7,8,9].map(v => ({ suit: 'pin' as const, value: v as SuitedValue })),
+  { suit: 'pin' as const, value: 5 as SuitedValue, isAka: true },
+  ...[1,2,3,4,5,6,7,8,9].map(v => ({ suit: 'sou' as const, value: v as SuitedValue })),
+  { suit: 'sou' as const, value: 5 as SuitedValue, isAka: true },
+  { suit: 'honor' as const, value: 'east'  as const },
+  { suit: 'honor' as const, value: 'south' as const },
+  { suit: 'honor' as const, value: 'west'  as const },
+  { suit: 'honor' as const, value: 'north' as const },
+  { suit: 'honor' as const, value: 'haku'  as const },
+  { suit: 'honor' as const, value: 'hatsu' as const },
+  { suit: 'honor' as const, value: 'chun'  as const },
+];
+
+const WINNING_PALETTE_ROWS = [
+  { label: 'Man · Characters', tiles: ALL_TILES.filter(t => t.suit === 'man') },
+  { label: 'Pin · Circles',    tiles: ALL_TILES.filter(t => t.suit === 'pin') },
+  { label: 'Sou · Bamboo',     tiles: ALL_TILES.filter(t => t.suit === 'sou') },
+  { label: 'Honors',           tiles: ALL_TILES.filter(t => t.suit === 'honor') },
+];
+
+function tileMatches(a: Tile, b: Tile) {
+  return a.suit === b.suit && a.value === b.value;
+}
+
+function tileLabel(tile: Tile): string {
+  if (tile.suit === 'honor') {
+    if (tile.value === 'haku') return 'Haku (White Dragon)';
+    if (tile.value === 'hatsu') return 'Hatsu (Green Dragon)';
+    if (tile.value === 'chun') return 'Chun (Red Dragon)';
+    return tile.value.charAt(0).toUpperCase() + tile.value.slice(1);
+  }
+  const suffix = tile.suit === 'man' ? 'm' : tile.suit === 'pin' ? 'p' : 's';
+  return `${tile.value}${suffix}`;
+}
+
 // ─── Result panel ─────────────────────────────────────────────────────────────
+
+const YAKU_INFO: Record<string, { en: string; desc: string }> = {
+  'riichi':           { en: 'Riichi',                    desc: 'Declare a closed tenpai hand by paying 1000 points. Closed hand only.' },
+  'double-riichi':    { en: 'Double Riichi',             desc: 'Riichi declared on your very first discard before anyone else has drawn. Closed hand only.' },
+  'ippatsu':          { en: 'One Shot',                  desc: 'Win within one full round after declaring Riichi, before any calls are made.' },
+  'tsumo':            { en: 'Self Draw',                 desc: 'Win by drawing your own winning tile. Closed hand only.' },
+  'tanyao':           { en: 'All Simples',               desc: 'All tiles are numbered 2 through 8. No 1s, 9s, or honor tiles allowed.' },
+  'pinfu':            { en: 'All Sequences',             desc: 'All four groups are sequences, the pair is not a scoring honor tile, and the wait is two-sided. Closed hand only. Always 0 fu.' },
+  'iipeiko':          { en: 'Pure Double Sequence',      desc: 'Two identical sequences in the same suit. Closed hand only.' },
+  'ryanpeiko':        { en: 'Twice Pure Double',         desc: 'Two separate pairs of identical sequences. Worth 3 han. Closed hand only.' },
+  'sanshoku-doujun':  { en: 'Three-Color Straight',      desc: 'The same three-tile sequence in all three suits. Worth 1 han open, 2 han closed.' },
+  'sanshoku-doukou':  { en: 'Three-Color Triplet',       desc: 'The same number as a triplet in all three suits.' },
+  'ittsu':            { en: 'Pure Straight',             desc: 'Sequences 1-2-3, 4-5-6, and 7-8-9 all in the same suit. Worth 1 han open, 2 han closed.' },
+  'chanta':           { en: 'Outside Hand',              desc: 'Every group and the pair contain a terminal (1 or 9) or honor tile. Worth 1 han open, 2 han closed.' },
+  'junchan':          { en: 'Terminal in Each Group',    desc: 'Every group and the pair contain a terminal (1 or 9). No honor tiles. Worth 2 han open, 3 han closed.' },
+  'toitoi':           { en: 'All Triplets',              desc: 'All four groups are triplets or quads. No sequences.' },
+  'sanankou':         { en: 'Three Concealed Triplets',  desc: 'Three of your four groups are triplets formed without calling on those specific tiles.' },
+  'sankantsu':        { en: 'Three Quads',               desc: 'Three of your groups are quads.' },
+  'honitsu':          { en: 'Half Flush',                desc: 'All tiles are from one suit, plus honor tiles. Worth 2 han open, 3 han closed.' },
+  'chinitsu':         { en: 'Full Flush',                desc: 'All tiles are from a single suit. No honor tiles. Worth 5 han open, 6 han closed.' },
+  'chiitoitsu':       { en: 'Seven Pairs',               desc: 'Seven unique pairs. No two pairs can be the same tile. Closed hand only. Always 25 fu.' },
+  'rinshan':          { en: 'Dead Wall Draw',            desc: 'Win by drawing the replacement tile after declaring a quad.' },
+  'chankan':          { en: 'Robbing the Quad',          desc: 'Win by taking a tile someone adds to an existing triplet to make a quad.' },
+  'haitei':           { en: 'Last Tile Draw',            desc: 'Win by drawing the very last tile in the wall.' },
+  'houtei':           { en: 'Last Tile Discard',         desc: 'Win by claiming the very last discard of the round.' },
+  'yakuhai':          { en: 'Honor Triplet',             desc: 'A triplet of dragons, or a triplet of the wind matching your seat or the round wind.' },
+  'shousangen':       { en: 'Little Three Dragons',      desc: 'Triplets of two dragon tiles and a pair of the third dragon.' },
+  'kokushi':          { en: 'Thirteen Orphans',          desc: 'One each of every terminal and honor tile, plus one duplicate. Closed hand only.' },
+  'suuankou':         { en: 'Four Concealed Triplets',   desc: 'All four groups are triplets formed without calling. Closed hand only.' },
+  'daisangen':        { en: 'Big Three Dragons',         desc: 'Triplets of all three dragon tiles.' },
+  'shousuushi':       { en: 'Little Four Winds',         desc: 'Triplets of three wind tiles and a pair of the fourth wind.' },
+  'daisuushi':        { en: 'Big Four Winds',            desc: 'Triplets of all four wind tiles.' },
+  'tsuuiisou':        { en: 'All Honors',                desc: 'Every tile is an honor tile. No suited tiles at all.' },
+  'ryuuiisou':        { en: 'All Green',                 desc: 'All tiles are from: 2, 3, 4, 6, 8 of bamboo, and green dragon.' },
+  'chinroutou':       { en: 'All Terminals',             desc: 'Every tile is a 1 or 9. No middle tiles, no honor tiles.' },
+  'chuurenpoutou':    { en: 'Nine Gates',                desc: '1-1-1-2-3-4-5-6-7-8-9-9-9 in one suit, plus any matching tile. Closed hand only.' },
+  'suukantsu':        { en: 'Four Quads',                desc: 'All four groups are quads.' },
+  'tenhou':           { en: 'Heavenly Hand',             desc: 'Dealer wins on their starting hand before the first discard.' },
+  'chiihou':          { en: 'Earthly Hand',              desc: 'Non-dealer wins on their very first draw before anyone has made a call.' },
+};
 
 const HAND_NAME_LABELS: Record<string, string> = {
   mangan: 'MANGAN',
@@ -183,6 +265,7 @@ function ResultPanel({
   seatWind: WindValue;
 }) {
   const [fuOpen, setFuOpen] = useState(false);
+  const [openTooltip, setOpenTooltip] = useState<string | null>(null);
 
   if (!result.valid) {
     return (
@@ -243,18 +326,57 @@ function ResultPanel({
 
       {/* Yaku list */}
       <div className="px-5 py-2" style={{ borderBottom: `1px solid ${C.goldBorderXs}` }}>
-        {sortedYaku.map((y, i) => (
-          <div
-            key={i}
-            className="flex justify-between py-2.5 font-mono text-sm"
-            style={{ borderBottom: i < sortedYaku.length - 1 || totalDora > 0 ? `1px solid ${C.goldBorderXs}` : 'none' }}
-          >
-            <span style={{ color: C.text }}>{y.name}</span>
-            <span className="font-semibold" style={{ color: C.gold }}>
-              {y.isYakuman ? 'yakuman' : `${y.han} han`}
-            </span>
-          </div>
-        ))}
+        {sortedYaku.map((y, i) => {
+          const info = YAKU_INFO[y.name];
+          const isOpen = openTooltip === y.name;
+          return (
+            <div
+              key={i}
+              style={{ borderBottom: i < sortedYaku.length - 1 || totalDora > 0 ? `1px solid ${C.goldBorderXs}` : 'none' }}
+            >
+              <div className="flex items-center justify-between py-2.5 font-mono text-sm gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span style={{ color: C.text }} className="truncate">
+                    {info ? (
+                      <>
+                        <span style={{ color: C.text }}>
+                          {y.name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                        </span>
+                        <span style={{ color: C.textSec }}> · </span>
+                        <span style={{ color: C.text }}>{info.en}</span>
+                      </>
+                    ) : y.name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                  </span>
+                  {info && (
+                    <button
+                      onClick={() => setOpenTooltip(isOpen ? null : y.name)}
+                      className="flex-shrink-0 w-4 h-4 rounded-sm text-xs font-bold flex items-center justify-center transition-colors"
+                      style={{
+                        background: isOpen ? C.goldMuted : 'transparent',
+                        color: isOpen ? C.gold : C.textSec,
+                        border: `1px solid ${isOpen ? C.gold : C.goldBorderSm}`,
+                        lineHeight: 1,
+                      }}
+                    >
+                      ?
+                    </button>
+                  )}
+                </div>
+                <span className="font-semibold flex-shrink-0" style={{ color: C.gold }}>
+                  {y.isYakuman ? 'yakuman' : `${y.han} han`}
+                </span>
+              </div>
+              {isOpen && info && (
+                <div
+                  className="text-xs pb-2.5 leading-relaxed"
+                  style={{ color: C.textSec }}
+                >
+                  {info.desc}
+                </div>
+              )}
+            </div>
+          );
+        })}
         {totalDora > 0 && (
           <div className="flex justify-between py-2.5 font-mono text-sm">
             <span style={{ color: C.text }}>
@@ -392,7 +514,7 @@ export default function Home() {
         return;
       }
       const tiles: Tile[] = data.tiles;
-      setHandTiles(tiles.slice(0, 13));
+      setHandTiles(sortTiles(tiles.slice(0, 13)));
       if (tiles.length >= 14) setWinningTile(tiles[13]);
     } catch {
       setDetectError('Detection failed. Check your connection and try again.');
@@ -416,7 +538,7 @@ export default function Home() {
         setDetectError(data.error);
         return;
       }
-      setDoraIndicatorTiles(data.tiles.slice(0, 4));
+      setDoraIndicatorTiles(sortTiles(data.tiles.slice(0, 4)));
     } catch {
       setDetectError('Detection failed. Check your connection and try again.');
     } finally {
@@ -456,6 +578,35 @@ export default function Home() {
   }
 
   const meldTileCount = melds.reduce((s, m) => s + m.tiles.length, 0);
+
+  const tenpaiWaits = useMemo<Tile[]>(() => {
+    const meldCount = melds.reduce((s, m) => s + m.tiles.length, 0);
+    if (handTiles.length + meldCount !== 13) return [];
+    return ALL_TILES.filter(candidate => {
+      try {
+        const result = score({
+          closedTiles: handTiles,
+          melds,
+          winningTile: candidate,
+          winType,
+          seatWind,
+          roundWind,
+          doraIndicators: doraIndicatorTiles,
+          riichi,
+          doubleRiichi,
+          ippatsu,
+          haitei,
+          houtei,
+          rinshan,
+          chankan,
+        });
+        return result.valid;
+      } catch {
+        return false;
+      }
+    });
+  }, [handTiles, melds, winType, seatWind, roundWind, doraIndicatorTiles, riichi, doubleRiichi, ippatsu, haitei, houtei, rinshan, chankan]);
+
   const canScore = handTiles.length + meldTileCount === 13 && winningTile !== null;
   const usedTiles: Tile[] = [
     ...handTiles,
@@ -508,6 +659,7 @@ export default function Home() {
                 onChange={setHandTiles}
                 maxTiles={13 - meldTileCount}
                 usedTiles={usedTiles}
+                forceOpen={handScanned && handTiles.length + meldTileCount < 13}
               />
 
               {(handScanned || handTiles.length > 0) && (
@@ -519,19 +671,69 @@ export default function Home() {
                 />
               )}
 
-              <div
-                className="-mx-4 px-4 pb-4 pt-4"
-                style={{ background: C.surfaceEl, borderTop: `1px solid ${C.goldBorderXs}` }}
-              >
-                <TileRow
-                  label="Winning tile"
-                  tiles={winningTile ? [winningTile] : []}
-                  onChange={(tiles) => setWinningTile(tiles[0] ?? null)}
-                  maxTiles={1}
-                  isWinning
-                  usedTiles={usedTiles}
-                />
-              </div>
+              {handTiles.length + meldTileCount === 13 && (
+                <div
+                  className="-mx-4 px-4 pb-4 pt-4"
+                  style={{ background: C.surfaceEl, borderTop: `1px solid ${C.goldBorderXs}` }}
+                >
+                  {tenpaiWaits.length === 0 ? (
+                    <div style={{ border: `1px solid ${C.goldBorderSm}`, borderRadius: 2, padding: '10px 14px' }}>
+                      <p className="text-xs font-semibold tracking-widest uppercase mb-1" style={{ color: C.textSec }}>
+                        Winning Tile
+                      </p>
+                      <p className="text-xs" style={{ color: C.red }}>
+                        Hand is not in tenpai — remove and re-add tiles to fix misdetections.
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-xs font-semibold tracking-widest uppercase mb-3" style={{ color: C.textSec }}>
+                        Winning Tile
+                      </p>
+                      <div className="rounded-sm p-3 space-y-3" style={{ background: C.bg, border: `1px solid ${C.goldBorderSm}` }}>
+                        {WINNING_PALETTE_ROWS.map(({ label: rowLabel, tiles: rowTiles }) => (
+                          <div key={rowLabel}>
+                            <p className="text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: C.textSec }}>{rowLabel}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {rowTiles.map((tile, i) => {
+                                const isWait = tenpaiWaits.some(w => tileMatches(w, tile));
+                                const isSelected = winningTile !== null && tileMatches(winningTile, tile);
+                                return (
+                                  <button
+                                    key={i}
+                                    onClick={() => setWinningTile(tile)}
+                                    aria-label={tileLabel(tile)}
+                                    title={tileLabel(tile)}
+                                    className="px-1.5 py-1 rounded text-sm font-medium transition-all"
+                                    style={{
+                                      background: isSelected ? 'rgba(201,162,39,0.2)' : C.surfaceEl,
+                                      border: `1px solid ${isSelected || isWait ? C.gold : C.goldBorderSm}`,
+                                      opacity: isSelected || isWait ? 1 : 0.3,
+                                      transform: isSelected ? 'scale(1.15)' : undefined,
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (isWait && !isSelected) e.currentTarget.style.boxShadow = `0 0 6px ${C.gold}`;
+                                    }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+                                  >
+                                    <TileGraphic tile={tile} size="small" />
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {winningTile && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <TileGraphic tile={winningTile} size="normal" />
+                          <span className="text-xs" style={{ color: C.textSec }}>{tileLabel(winningTile)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
@@ -562,30 +764,13 @@ export default function Home() {
             onCapture={handleDoraCapture}
             isLoading={isDetectingDora}
           />
-          {showDoraRow ? (
-            <TileRow
-              label="Dora indicators"
-              tiles={doraIndicatorTiles}
-              onChange={setDoraIndicatorTiles}
-              maxTiles={4}
-              usedTiles={usedTiles}
-            />
-          ) : (
-            <div className="space-y-2">
-              <p className="text-xs text-center" style={{ color: C.textSec }}>
-                Tap &lsquo;Scan Dora&rsquo; to detect dora indicators automatically
-              </p>
-              <button
-                onClick={() => setDoraScanned(true)}
-                className="w-full py-2.5 rounded-sm text-sm font-medium tracking-wide transition-colors"
-                style={{ border: `1px solid ${C.goldBorderSm}`, color: C.textSec, background: 'transparent' }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.gold; e.currentTarget.style.color = C.gold; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.goldBorderSm; e.currentTarget.style.color = C.textSec; }}
-              >
-                Input Manually
-              </button>
-            </div>
-          )}
+          <TileRow
+            label="Dora indicators"
+            tiles={doraIndicatorTiles}
+            onChange={setDoraIndicatorTiles}
+            maxTiles={4}
+            usedTiles={usedTiles}
+          />
         </section>
 
         {/* ── Detection error ──────────────────────────────────────────── */}

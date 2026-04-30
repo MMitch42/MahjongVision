@@ -5,84 +5,59 @@ export interface TileGraphicProps {
   size?: 'normal' | 'small';
 }
 
-const MAN_NUMERALS: Record<SuitedValue, string> = {
-  1: '一', 2: '二', 3: '三', 4: '四', 5: '五',
-  6: '六', 7: '七', 8: '八', 9: '九',
-};
-
-const HONOR_CHARS: Record<string, string> = {
-  east: '東', south: '南', west: '西', north: '北',
-  hatsu: '發', chun: '中',
-};
-
-const HONOR_COLORS: Record<string, string> = {
-  east: '#cc2200', south: '#cc2200', west: '#cc2200', north: '#cc2200',
-  hatsu: '#2d7a2d', chun: '#cc2200',
-};
-
-function ManGraphic({ value, isAka }: { value: SuitedValue; isAka: boolean }) {
-  return (
-    <>
-      <text x="15" y="22" textAnchor="middle" fontSize="17" fontWeight="bold"
-        fill={isAka ? '#cc2200' : '#111111'} fontFamily="serif">
-        {MAN_NUMERALS[value]}
-      </text>
-      <text x="15" y="33" textAnchor="middle" fontSize="9" fill="#555555" fontFamily="serif">
-        万
-      </text>
-    </>
-  );
-}
-
-function PinGraphic({ value, isAka }: { value: SuitedValue; isAka: boolean }) {
-  return (
-    <>
-      <text x="15" y="20" textAnchor="middle" fontSize="15" fontWeight="bold"
-        fill={isAka ? '#cc2200' : '#111111'}>
-        {value}
-      </text>
-      <circle cx="15" cy="31" r="4.5" fill="#1a5fa8" />
-    </>
-  );
-}
-
-function SouGraphic({ value, isAka }: { value: SuitedValue; isAka: boolean }) {
-  return (
-    <>
-      <text x="15" y="20" textAnchor="middle" fontSize="15" fontWeight="bold"
-        fill={isAka ? '#cc2200' : '#111111'}>
-        {value}
-      </text>
-      <text x="15" y="33" textAnchor="middle" fontSize="10" fill="#2d7a2d" fontFamily="serif">
-        竹
-      </text>
-    </>
-  );
-}
-
-function HonorGraphic({ value }: { value: string }) {
-  if (value === 'haku') {
-    return <rect x="6" y="7" width="18" height="24" rx="2" fill="none" stroke="#1a5fa8" strokeWidth="3" />;
+/**
+ * Maps a Tile to its SVG filename in /public/tiles/.
+ * Tile images: FluffyStuff/riichi-mahjong-tiles (CC0 public domain)
+ * https://github.com/FluffyStuff/riichi-mahjong-tiles
+ */
+function tileFileName(tile: Tile): string {
+  if (tile.suit === 'honor') {
+    const map: Record<string, string> = {
+      east:  'Ton',
+      south: 'Nan',
+      west:  'Shaa',
+      north: 'Pei',
+      haku:  'Haku',
+      hatsu: 'Hatsu',
+      chun:  'Chun',
+    };
+    return map[tile.value as string] ?? 'Blank';
   }
-  return (
-    <text x="15" y="26" textAnchor="middle" fontSize="20" fontWeight="bold"
-      fill={HONOR_COLORS[value] ?? '#111111'} fontFamily="serif">
-      {HONOR_CHARS[value]}
-    </text>
-  );
+
+  const suit = tile.suit === 'man' ? 'Man'
+             : tile.suit === 'pin' ? 'Pin'
+             : 'Sou';
+  const val = tile.value as SuitedValue;
+
+  // Red 5 (aka dora)
+  if (val === 5 && tile.isAka) return `${suit}5-Dora`;
+
+  return `${suit}${val}`;
 }
 
 export default function TileGraphic({ tile, size = 'normal' }: TileGraphicProps) {
-  const w = size === 'normal' ? 28 : 20;
-  const h = size === 'normal' ? 36 : 25;
+  const w = size === 'normal' ? 40 : 28;
+  const h = size === 'normal' ? 56 : 39;
+  const src = `/tiles/${tileFileName(tile)}.svg`;
 
   return (
-    <svg viewBox="0 0 30 38" width={w} height={h} style={{ display: 'block' }}>
-      <rect x="0" y="0" width="30" height="38" fill="#f5f0dc" />
-      {tile.suit === 'man' && <ManGraphic value={tile.value} isAka={tile.isAka ?? false} />}
-      {tile.suit === 'pin' && <PinGraphic value={tile.value} isAka={tile.isAka ?? false} />}
-      {tile.suit === 'sou' && <SouGraphic value={tile.value} isAka={tile.isAka ?? false} />}
-      {tile.suit === 'honor' && <HonorGraphic value={tile.value} />}
-    </svg>
+    <span style={{
+      display: 'inline-flex',
+      background: '#f5f0dc',
+      borderRadius: 3,
+      padding: 2,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+      lineHeight: 0,
+    }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={tileFileName(tile)}
+        width={w}
+        height={h}
+        style={{ display: 'block', imageRendering: 'auto' }}
+        draggable={false}
+      />
+    </span>
   );
 }

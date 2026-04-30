@@ -11,6 +11,7 @@ interface TileRowProps {
   label: string;
   usedTiles?: Tile[];
   isWinning?: boolean;
+  forceOpen?: boolean;
 }
 
 const C = {
@@ -78,8 +79,9 @@ const PALETTE_ROWS = [
   { label: 'Honors', tiles: HONOR_TILES },
 ];
 
-export default function TileRow({ tiles, onChange, maxTiles, label, usedTiles = [] }: TileRowProps) {
+export default function TileRow({ tiles, onChange, maxTiles, label, usedTiles = [], forceOpen = false }: TileRowProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const effectiveOpen = forceOpen || paletteOpen;
 
   const atMax = maxTiles !== undefined && tiles.length >= maxTiles;
   const countOk = maxTiles === undefined || tiles.length === maxTiles;
@@ -110,7 +112,7 @@ export default function TileRow({ tiles, onChange, maxTiles, label, usedTiles = 
         </span>
       </div>
 
-      {tiles.length === 0 && !paletteOpen && !atMax && (
+      {tiles.length === 0 && !effectiveOpen && !atMax && (
         <button
           onClick={() => setPaletteOpen(true)}
           className="w-full py-2 rounded-sm text-xs font-medium tracking-wide transition-colors"
@@ -141,17 +143,17 @@ export default function TileRow({ tiles, onChange, maxTiles, label, usedTiles = 
         </div>
       )}
 
-      {!atMax && (tiles.length > 0 || paletteOpen) && (
+      {!atMax && (tiles.length > 0 || effectiveOpen) && (
         <button
           onClick={() => setPaletteOpen(!paletteOpen)}
           className="text-xs font-semibold tracking-wide uppercase underline transition-colors"
           style={{ color: C.gold }}
         >
-          {paletteOpen ? 'Close palette' : 'Add tile'}
+          {effectiveOpen ? 'Close palette' : 'Add tile'}
         </button>
       )}
 
-      {paletteOpen && (
+      {effectiveOpen && (
         <div className="rounded-sm p-3 space-y-3" style={{ background: C.bg, border: `1px solid ${C.goldBorderSm}` }}>
           {PALETTE_ROWS.map(({ label: rowLabel, tiles: rowTiles }) => (
             <div key={rowLabel}>
